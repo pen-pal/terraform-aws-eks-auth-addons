@@ -5,7 +5,7 @@
 resource "aws_eks_addon" "this" {
   for_each = { for k, v in var.cluster_addons : k => v if var.create }
 
-  cluster_name = var.cluster_name
+  cluster_name = var.cluster_id
   addon_name   = try(each.value.name, each.key)
 
   addon_version            = lookup(each.value, "addon_version", null)
