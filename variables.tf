@@ -33,3 +33,9 @@ variable "aws_auth_configmap_yaml" {
   type        = string
   default     = null
 }
+
+variable "create" {
+  description = "Controls if EKS resources should be created (affects nearly all resources)"
+  type        = bool
+  default     = true
+}
