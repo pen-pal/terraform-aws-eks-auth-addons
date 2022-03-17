@@ -31,7 +31,7 @@ locals {
 
   map_roles = var.map_roles
 
-  current_auth_configmap = data.kubernetes_config_map.aws-auth
+  current_auth_configmap = var.aws_auth_configmap_yaml
 
   updated_auth_configmap_data = {
     data = {
