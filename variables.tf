@@ -39,3 +39,13 @@ variable "create" {
   type        = bool
   default     = true
 }
+
+variable "map_roles" {
+  description = "Additional IAM roles to add to the aws-auth configmap on the kubernetes cluster for access"
+  type = object({
+    rolearn  = string
+    username = string
+    groups   = list(string)
+  })
+  default = {}
+}
