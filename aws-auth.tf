@@ -30,6 +30,7 @@ locals {
   })
 
   map_roles = var.map_roles
+  map_users = var.map_users
 
   current_auth_configmap = var.aws_auth_configmap_yaml
 
