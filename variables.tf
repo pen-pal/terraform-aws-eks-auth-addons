@@ -49,3 +49,13 @@ variable "map_roles" {
   })
   default = null
 }
+
+variable "map_users" {
+  description = "Additional IAM roles to add to the aws-auth configmap on the kubernetes cluster for access"
+  type = object({
+    userarn  = string
+    username = string
+    groups   = list(string)
+  })
+  default = null
+}
