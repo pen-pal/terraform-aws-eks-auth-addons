@@ -19,4 +19,6 @@ resource "aws_eks_addon" "this" {
   }
 
   tags = var.tags
+
+  depends_on = [kubernetes_config_map.aws_auth]
 }
