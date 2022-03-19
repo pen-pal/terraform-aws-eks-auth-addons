@@ -1,66 +1,84 @@
-data "aws_eks_cluster_auth" "this" {
+data "aws_eks_cluster" "cluster" {
   name = var.cluster_id
 }
 
+data "aws_eks_cluster_auth" "cluster" {
+  name = var.cluster_id
+}
+
+data "aws_availability_zones" "available" {
+}
+
+provider "kubernetes" {
+  host                   = element(concat(data.aws_eks_cluster.cluster.*.endpoint, [""]), 0)
+  cluster_ca_certificate = base64decode(element(concat(data.aws_eks_cluster.cluster.*.certificate_authority.0.data, [""]), 0))
+  token                  = element(concat(data.aws_eks_cluster_auth.cluster.*.token, [""]), 0)
+}
+
 locals {
-  kubeconfig = yamlencode({
-    apiVersion      = "v1"
-    kind            = "Config"
-    current-context = "terraform"
-    clusters = [{
-      name = var.cluster_id
-      cluster = {
-        certificate-authority-data = var.cluster_certificate_authority_data
-        server                     = var.cluster_endpoint
-      }
-    }]
-    contexts = [{
-      name = "terraform"
-      context = {
-        cluster = var.cluster_id
-        user    = "terraform"
-      }
-    }]
-    users = [{
-      name = "terraform"
-      user = {
-        token = data.aws_eks_cluster_auth.this.token
-      }
-    }]
-  })
-
-  map_roles = var.map_roles
-  map_users = var.map_users
-
-  current_auth_configmap = var.aws_auth_configmap_yaml
-
-  updated_auth_configmap_data = {
-    data = {
-      mapRoles = replace(yamlencode(
-        distinct(concat(
-          yamldecode(local.current_auth_configmap.data.mapRoles), local.map_roles)
-      )), "\"", "")
-      mapUsers = yamlencode(local.map_users)
+  kubeconfig = yamlencode(
+    {
+      apiVersion      = "v1"
+      kind            = "Config"
+      current-context = "terraform"
+      clusters = [{
+        name = var.cluster_id
+        cluster = {
+          certificate-authority-data = var.cluster_certificate_authority_data
+          server                     = var.cluster_endpoint
+        }
+      }]
+      contexts = [{
+        name = "terraform"
+        context = {
+          cluster = var.cluster_id
+          user    = "terraform"
+        }
+      }]
+      users = [{
+        name = "terraform"
+        user = {
+          token = data.aws_eks_cluster_auth.cluster.token
+        }
+      }]
     }
+  )
+  current_auth_configmap = yamldecode(var.aws_auth_configmap_yaml)
+
+  merged_permissions = {
+    mapRoles = yamlencode(
+      distinct(concat(
+        yamldecode(local.current_auth_configmap.data.mapRoles), var.map_roles, )
+    ))
+    mapUsers    = yamlencode(var.map_users)
+    mapAccounts = yamlencode(var.map_accounts)
   }
+
 
 }
 
-resource "null_resource" "apply" {
-  triggers = {
-    kubeconfig = base64encode(local.kubeconfig)
-    cmd_patch  = <<-EOT
-      kubectl create configmap aws-auth -n kube-system --kubeconfig <(echo $KUBECONFIG | base64 --decode)
-      kubectl patch configmap/aws-auth --type merge --patch "${chomp(jsonencode(local.updated_auth_configmap_data))}" -n kube-system --kubeconfig <(echo $KUBECONFIG | base64 --decode)
-    EOT
+resource "kubernetes_config_map" "aws_auth" {
+  metadata {
+    name      = "aws-auth"
+    namespace = "kube-system"
+    labels = merge(
+      {
+        "app.kubernetes.io/managed-by" = "Terraform"
+        # / are replaced by . because label validator fails in this lib
+        # https://github.com/kubernetes/apimachinery/blob/1bdd76d09076d4dc0362456e59c8f551f5f24a72/pkg/util/validation/validation.go#L166
+        "terraform.io/module" = "terraform-aws-modules.eks.aws"
+      },
+      var.aws_auth_additional_labels
+    )
   }
-  #kubectl patch configmap/aws-auth --patch "${var.aws_auth_configmap_yaml}" -n kube-system --kubeconfig <(echo $KUBECONFIG | base64 --decode)
 
-  provisioner "local-exec" {
-    interpreter = ["/bin/bash", "-c"]
-    environment = {
-      KUBECONFIG = self.triggers.kubeconfig
-    }
-    command = self.triggers.cmd_patch
+  data = {
+    mapRoles = yamlencode(
+      distinct(concat(
+        yamldecode(local.current_auth_configmap.data.mapRoles), var.map_roles, )
+    ))
+    mapUsers    = yamlencode(var.map_users)
+    mapAccounts = yamlencode(var.map_accounts)
   }
+
 }
